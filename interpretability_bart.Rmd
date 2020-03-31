@@ -1,4 +1,25 @@
-# The Interpretability of BART (Bayesian Additive Regression Trees)
+---
+title: "The Interpretability of BART (Bayesian Additive Regression Trees)"
+author: "Ethan Liu"
+date: "3/25/2020"
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+  pdf_document:
+    toc: yes
+  md_document:
+    toc: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = T)
+options(digits = 3, scipen = 3)
+```
+
+\newpage
 
 # Abstract
 Bayesian Additive Regression Trees (BART) is an ensemble Bayesian sum-of-trees model and has shown its promising applicability on either simulated data or real data sets. However, it suffers the same issue as most machine learning models -- interpretability -- many of the machine learning models are still a black-box without an intuitive explanation to the general public. While this is the case, BART has been applied to econometrics and causal inference for years. In these domains, explaining and understanding the effect is far more important than making predictions, interpretability is, therefore, an issue that awaits a resolution. In this project, I explore and present different methods and use a simulation approach to analyze how does the BART work and try to understand its interpretability. The result shows, though BART fits data with different underlying models reasonably well, it cannot provide effect size and feature importance in a consistent way in terms of quantitative measures. Further examination may be needed on this topic.
@@ -91,7 +112,74 @@ $$Y = X_1 + X_2 + X_1*X_2 + X_3 + X_4 + X_5 + \epsilon, \quad \epsilon \sim \mat
 
 See code for all specifications.
 
-<img src="interpretability_bart_files/figure-html/unnamed-chunk-1-1.png" width="40%" style="display: block; margin: auto;" /><img src="interpretability_bart_files/figure-html/unnamed-chunk-1-2.png" width="40%" style="display: block; margin: auto;" /><img src="interpretability_bart_files/figure-html/unnamed-chunk-1-3.png" width="40%" style="display: block; margin: auto;" /><img src="interpretability_bart_files/figure-html/unnamed-chunk-1-4.png" width="40%" style="display: block; margin: auto;" />
+```{r echo=F, out.width="40%", fig.align = "center"}
+pacman::p_load(bartMachine)
+
+set.seed(11)
+n  = 200 
+p = 5
+X = data.frame(matrix(runif(n * p), ncol = p))
+
+# density of all prediction
+plot_post_all = function(X, f, main='', n_rep=5) {
+  y = f(X) + rnorm(nrow(X))
+  y_true = f(X)
+  plot(density(y_true), main=main)
+  for (i in 1:n_rep) {
+    bm = bartMachine(X, y, verbose=F)
+    post = bart_machine_get_posterior(bm, X)
+    y_pred = as.vector(post$y_hat_posterior_samples)
+    lines(density(y_pred), col=i+1)
+  }
+}
+
+# comparing different functions
+par(mfrow=c(2, 2), mar=c(1,1,1,1))
+f = function(X) X[,1] + X[,2] + X[,3] + X[,4] + X[,5]
+plot_post_all(X, f, 'addition')
+f = function(X) X[,1] - X[,2] + X[,3] + X[,4] - X[,5]
+plot_post_all(X, f, 'subtraction')
+f = function(X) X[,1] + X[,2] + X[,3] + X[,4] + X[,5] + X[,1]*X[,2]
+plot_post_all(X, f, 'interation/multiplication')
+f = function(X) X[,1] + X[,2] + X[,3] + X[,4] + X[,5] + X[,1]/X[,2]
+plot_post_all(X, f, 'interaction/division')
+
+# nonlinear
+f = function(X) log(X[,1]) + X[,2] + X[,3] + X[,4] + X[,5]
+plot_post_all(X, f, 'log')
+f = function(X) sqrt(X[,1]) + X[,2] + X[,3] + X[,4] + X[,5]
+plot_post_all(X, f, 'sqrt')
+f = function(X) X[,1]^2 + X[,2] + X[,3] + X[,4] + X[,5]
+plot_post_all(X, f, 'square')
+f = function(X) X[,1]^3 + X[,2] + X[,3] + X[,4] + X[,5]
+plot_post_all(X, f, 'cubic')
+
+# more nonlinear
+f = function(X) sin(X[,1]) + X[,2] + X[,3] + X[,4] + X[,5]
+plot_post_all(X, f, 'sin')
+f = function(X) sin(X[,1]) + cos(X[,2]) + X[,3] + X[,4] + X[,5]
+plot_post_all(X, f, 'sin cos')
+f = function(X) sin(X[ ,1] * X[,2]) + X[,3] + X[,4] + X[,5]
+plot_post_all(X, f, 'sin cos interaction')
+f = function(X) 10 * sin(pi* X[ ,1] * X[,2]) +20 * (X[,3] -.5)^2 + 10 * X[ ,4] + 5 * X[,5]
+plot_post_all(X, f, 'Friedman')
+
+# complicated
+f = function(X) 10 * tan(sin(pi* X[ ,1] * X[,2])) +20 * log((X[,3] -.5)^2) + sqrt(10 * X[ ,4] + 5 * X[,5]^2)
+plot_post_all(X, f, 'complicated')
+f = function(X) X[,1] + X[,2] + X[,3] + 3*as.numeric(X[,4] > 0.3) + 5*as.numeric(X[,5] > 0.5)
+plot_post_all(X, f, 'step')
+f = function(X) ifelse((X[,1] + X[,2] + X[,3] + X[,4] + X[,5]) > mean(X[,1] + X[,2] + X[,3] + X[,4] + X[,5]),
+                       0,
+                       X[,1] + X[,2] + X[,3] + X[,4] + X[,5])
+plot_post_all(X, f, 'piecewise')
+f = function(X) ifelse(X[,1] > 0.5,
+                       2*X[,2] + X[,3] + X[,4] + X[,5],
+                       -2*X[,2] + X[,3] + X[,4] + X[,5])
+plot_post_all(X, f, 'treatment')
+
+par(mfrow=c(1, 1))
+```
 
 From the above plots, it seems BART doesn't fit the best for simple models but fits very well for complicated models. It doesn't matter if the model itself is linear or nonlinear, stepwise or not due to the nature of BART is regression trees.
 
@@ -105,18 +193,96 @@ serves as a standard for evaluating approximation. It can also be found the BART
 
 Since BART provides access to the posterior distribution, credible intervals instead of confidence intervals are available. Though linear models have point estimates and confidence intervals, this feature hear is critical compared to other machine learning models.
 
-<img src="interpretability_bart_files/figure-html/unnamed-chunk-2-1.png" width="40%" style="display: block; margin: auto;" /><img src="interpretability_bart_files/figure-html/unnamed-chunk-2-2.png" width="40%" style="display: block; margin: auto;" /><img src="interpretability_bart_files/figure-html/unnamed-chunk-2-3.png" width="40%" style="display: block; margin: auto;" /><img src="interpretability_bart_files/figure-html/unnamed-chunk-2-4.png" width="40%" style="display: block; margin: auto;" />
+```{r echo=F, out.width="40%", fig.align = "center"}
+plot_dev = function(X, f, main='') {
+  y = f(X) + rnorm(nrow(X))
+  bm = bartMachine(X, y, verbose=F)
+  plot_y_vs_yhat(bm, credible_intervals=T) 
+}
+
+# comparing different functions
+par(mfrow=c(2, 2), mar=c(1,1,1,1))
+f = function(X) X[,1] + X[,2] + X[,3] + X[,4] + X[,5]
+plot_dev(X, f, 'addition')
+f = function(X) X[,1] - X[,2] + X[,3] + X[,4] - X[,5]
+plot_dev(X, f, 'subtraction')
+f = function(X) X[,1] + X[,2] + X[,3] + X[,4] + X[,5] + X[,1]*X[,2]
+plot_dev(X, f, 'interation/multiplication')
+f = function(X) X[,1] + X[,2] + X[,3] + X[,4] + X[,5] + X[,1]/X[,2]
+plot_dev(X, f, 'interaction/division')
+
+# nonlinear
+f = function(X) log(X[,1]) + X[,2] + X[,3] + X[,4] + X[,5]
+plot_dev(X, f, 'log')
+f = function(X) sqrt(X[,1]) + X[,2] + X[,3] + X[,4] + X[,5]
+plot_dev(X, f, 'sqrt')
+f = function(X) X[,1]^2 + X[,2] + X[,3] + X[,4] + X[,5]
+plot_dev(X, f, 'square')
+f = function(X) X[,1]^3 + X[,2] + X[,3] + X[,4] + X[,5]
+plot_dev(X, f, 'cubic')
+
+# more nonlinear
+f = function(X) sin(X[,1]) + X[,2] + X[,3] + X[,4] + X[,5]
+plot_dev(X, f, 'sin')
+f = function(X) sin(X[,1]) + cos(X[,2]) + X[,3] + X[,4] + X[,5]
+plot_dev(X, f, 'sin cos')
+f = function(X) sin(X[ ,1] * X[,2]) + X[,3] + X[,4] + X[,5]
+plot_dev(X, f, 'sin cos interaction')
+f = function(X) 10 * sin(pi* X[ ,1] * X[,2]) +20 * (X[,3] -.5)^2 + 10 * X[ ,4] + 5 * X[,5]
+plot_dev(X, f, 'Friedman')
+
+# complicated
+f = function(X) 10 * tan(sin(pi* X[ ,1] * X[,2])) +20 * log((X[,3] -.5)^2) + sqrt(10 * X[ ,4] + 5 * X[,5]^2)
+plot_dev(X, f, 'complicated')
+f = function(X) X[,1] + X[,2] + X[,3] + 3*as.numeric(X[,4] > 0.3) + 5*as.numeric(X[,5] > 0.5)
+plot_dev(X, f, 'step')
+f = function(X) ifelse((X[,1] + X[,2] + X[,3] + X[,4] + X[,5]) > mean(X[,1] + X[,2] + X[,3] + X[,4] + X[,5]),
+                       0,
+                       X[,1] + X[,2] + X[,3] + X[,4] + X[,5])
+plot_dev(X, f, 'piecewise')
+f = function(X) ifelse(X[,1] > 0.5,
+                       2*X[,2] + X[,3] + X[,4] + X[,5],
+                       -2*X[,2] + X[,3] + X[,4] + X[,5])
+plot_dev(X, f, 'treatment')
+
+par(mfrow=c(1, 1))
+```
 
 In summary, these density plots and deviation plots show BART has a reasonable fit for most of the models, though not perfectly ideal. With the posterior distribution, we can do a lot more with them such as drawing samples from it for further inference. However, the usage of this approach should be more closely examined since the posterior is not always satisfying.
 
 ## Perturbation
 In this section, I apply a small perturbation to test how BART responses to make predictions. Specifically speaking, after the training phase, I input new data to make a prediction, the new data is the mean of all columns but with a small perturbation on one of the column.
 
+```{r echo=F}
+perturbation = function(x, p, bm, n_per=1000, per_sd=1) {
+    per = seq(-x[1, p] * per_sd, x[1, p] * per_sd, length.out=n_per)
+    X_per = x[rep(1, n_per), ]
+    X_per[, p] = X_per[, p] + per
+    y_pred = predict(bm, X_per)
+    plot(X_per[, p], y_pred, cex=.2)
+    lines(X_per[, p], f(X_per), col=2, cex=.2)
+    abline(v=x[1, p], lty=2)
+}
+perturbation_allcol = function(X, f) {
+  y = f(X) + rnorm(nrow(X), 0, 0.1)
+  bm = bartMachine(X, y, verbose=F)
 
+  par(mfrow=c(1, 5))
+  for (p in 1:5) {
+    x = as.data.frame(matrix(sapply(X, mean), ncol=5))
+    colnames(x) = colnames(X)
+    perturbation(x, p, bm) 
+  }
+  par(mfrow=c(1, 1))
+}
+```
 
 Firstly, I use the linear model (`model1`)
 $$Y = X_1 + X_2 + X_3 + X_4 + X_5 + \epsilon, \quad \epsilon \sim \mathcal{N}(0, 0.1)$$
-<img src="interpretability_bart_files/figure-html/unnamed-chunk-4-1.png" height="50%" style="display: block; margin: auto;" />
+```{r echo=F, out.height="50%", fig.asp=0.3, fig.align = "center"}
+f = function(X) X[,1] + X[,2] + X[,3] + X[,4] + X[,5]
+perturbation_allcol(X, f)
+```
 
 The plots above from left to right are perturbation on five columns; the red lines are the true $y$ while black dots are predicted $y$. They show the model capture the relationship between $X$ and $y$ pretty well. We can also see the shadow of trees from it that there are obvious discontinuities. 
 
@@ -124,26 +290,40 @@ However, if I use the model (`model2`)
 $$Y = 100X_1 + 10X_2 + 5X_3 + 2X_4 + X_5 + \epsilon, \quad \epsilon \sim \mathcal{N}(0, 0.1)$$
 I found it captures the first covariate almost perfectly while less and less for the other covariates. Noted the number of parameters here is always the same. Apparently, it puts all its effort to capture the most influential one.
 
-<img src="interpretability_bart_files/figure-html/unnamed-chunk-5-1.png" height="50%" style="display: block; margin: auto;" />
+```{r echo=F, out.height="50%", fig.asp=0.3, fig.align = "center"}
+f = function(X) 100*X[,1] + 10*X[,2] + 5*X[,3] + 2*X[,4] + X[,5]
+perturbation_allcol(X, f)
+```
 
 I then apply the Friedman function,
 $$Y = 10  \sin(\pi X_1  X_2) +20  (X_3 -0.5)^2 + 10  X_4 + 5  X_5 + \epsilon, \quad \epsilon \sim \mathcal{N}(0, 1)$$
 And found it fits the true $y$ very well.
 
-<img src="interpretability_bart_files/figure-html/unnamed-chunk-6-1.png" height="50%" style="display: block; margin: auto;" />
+```{r echo=F, out.height="50%", fig.asp=0.3, fig.align = "center"}
+f = function(X) 10 * sin(pi* X[ ,1] * X[,2]) +20 * (X[,3] -.5)^2 + 10 * X[ ,4] + 5 * X[,5]
+perturbation_allcol(X, f)
+```
 
 Same deviation happens when I multiply the first coefficient 100 times larger.
 $$Y = 1000  \sin(\pi X_1  X_2) +20  (X_3 -0.5)^2 + 10  X_4 + 5  X_5 + \epsilon, \quad \epsilon \sim \mathcal{N}(0, 1)$$
 
-<img src="interpretability_bart_files/figure-html/unnamed-chunk-7-1.png" height="50%" style="display: block; margin: auto;" />
+```{r echo=F, out.height="50%", fig.asp=0.3, fig.align = "center"}
+f = function(X) 1000 * sin(pi* X[ ,1] * X[,2]) +20 * (X[,3] -.5)^2 + 10 * X[ ,4] + 5 * X[,5]
+perturbation_allcol(X, f)
+```
 
 These experiments show BART fit the data pretty well on each covariate given the "effect size" of them is similar. This is something we should be noticed when we want to interpret the model. As a comparison, a simple regression doesn't have this phenomenon for linear relations.
 
+```{r echo=F}
+f = function(X) X[,1] + X[,2] + X[,3] + X[,4] + X[,5]
+y = f(X) + rnorm(nrow(X), 0, 0.1)
+coef1 = round(summary(lm(y ~ X[, 1] + X[, 2] + X[, 3] + X[, 4] + X[, 5]))$coef[, 1], 2)
 
-```
-##        (Intercept) X[, 1] X[, 2] X[, 3] X[, 4] X[, 5]
-## model1       -0.02   1.01   1.01   1.01   1.03   1.00
-## model2       -0.01 100.00  10.00   5.01   2.04   0.98
+f = function(X) 100*X[,1] + 10*X[,2] + 5*X[,3] + 2*X[,4] + X[,5]
+y = f(X) + rnorm(nrow(X), 0, 0.1)
+coef2 = round(summary(lm(y ~ X[, 1] + X[, 2] + X[, 3] + X[, 4] + X[, 5]))$coef[, 1], 2)
+
+rbind(model1=coef1, model2=coef2)
 ```
 
 ## Partial dependence
@@ -155,9 +335,32 @@ As BART has the posterior distribution, we can plot credible intervals for the P
 
 I use the function `pd_plot` in `bartMachine` plotted below and the result is similar to the above analysis.
 
+```{r echo=F}
+pd_allcol = function(X, f) {
+  y = f(X) + rnorm(nrow(X), 0, 0.1)
+  bm = bartMachine(X, y, verbose=F)
 
+  par(mfrow=c(1, 5))
+  for (p in 1:5) {
+    pd_plot(bm, j=colnames(X)[p])
+  }
+  par(mfrow=c(1, 1))
+}
+```
 
-<img src="interpretability_bart_files/figure-html/unnamed-chunk-10-1.png" height="50%" style="display: block; margin: auto;" /><img src="interpretability_bart_files/figure-html/unnamed-chunk-10-2.png" height="50%" style="display: block; margin: auto;" /><img src="interpretability_bart_files/figure-html/unnamed-chunk-10-3.png" height="50%" style="display: block; margin: auto;" /><img src="interpretability_bart_files/figure-html/unnamed-chunk-10-4.png" height="50%" style="display: block; margin: auto;" />
+```{r echo=F, results='hide', out.height="50%", fig.asp=0.3, fig.align = "center"}
+f = function(X) X[,1] + X[,2] + X[,3] + X[,4] + X[,5]
+pd_allcol(X, f)
+
+f = function(X) 100*X[,1] + 10*X[,2] + 5*X[,3] + 2*X[,4] + X[,5]
+pd_allcol(X, f)
+
+f = function(X) 10 * sin(pi* X[ ,1] * X[,2]) +20 * (X[,3] -.5)^2 + 10 * X[ ,4] + 5 * X[,5]
+pd_allcol(X, f)
+
+f = function(X) 1000 * sin(pi* X[ ,1] * X[,2]) +20 * (X[,3] -.5)^2 + 10 * X[ ,4] + 5 * X[,5]
+pd_allcol(X, f)
+```
 
 ## Feature importance
 Another important aspect to explain the model is whether we can tell the importance of each feature and quantify that measure. Similar to the linear model example above, the coefficients in linear regression directly indicate its effect size of covariates on the response. Many machine learning lack this property, as well as BART. People have come up with ways to measure feature importance in indirect approaches, feature permutation is one of them.
@@ -169,18 +372,65 @@ The plots below show the feature importance calculated using this method for `mo
 
 As we can see, for `model1`, this measure is quite accurate. The estimated number, 0.770, for example, is not so far from 1; and 128.305 is not so far from 100.
 
-
-
-<img src="interpretability_bart_files/figure-html/unnamed-chunk-12-1.png" width="40%" style="display: block; margin: auto;" />
-
+```{r echo=F}
+pacman::p_load(caret)
+cv = function(X, y, k) {
+  rmse = 0
+  # train test split
+  flds <- createFolds(y, k=k, list = TRUE, returnTrain = FALSE)
+  for (test_idx in flds) {
+    # train
+    bm = bartMachine(X[-test_idx, ], y[-test_idx], verbose=F)
+    # test
+    y_pred = predict(bm, X[test_idx, ])
+    rmse = rmse + sqrt(mean((y_pred - y[test_idx])^2))
+  }
+  return(rmse)
+}
+permutation_1col = function(X, y, p, rep=5, k=5) {
+  # permutate the p th column rep times, each time do a k fold CV
+  
+  # fit the original dataset
+  rmse_orig = cv(X, y, k=k)
+  
+  # fit the permuted dataset
+  rmse_per = c()
+  X_per = X
+  for (i in 1:rep) {
+    X_per[, p] = sample(X_per[, p]) # shuffle the pth col
+    rmse_per = c(rmse_per, cv(X_per, y, k=k))
+  }
+  
+  return(list(orig=rmse_orig, per=rmse_per))
+}
+permutation_allcol = function(X, f) {
+  y = f(X) + rnorm(nrow(X), 0, 0.1)
+  
+  per_result = data.frame()
+  orig_result = c()
+  diff_result = c()
+  for (p in 1:ncol(X)) {
+    res = permutation_1col(X, y, p)
+    per_result = rbind(per_result, data.frame(p=p, rmse=res$per))
+    orig_result = c(orig_result, res$orig)
+    diff_result = c(diff_result, mean(res$per) - res$orig)
+  }
+  
+  boxplot(rmse ~ p, per_result, ylim=range(c(per_result$rmse, orig_result)))
+  points(1:ncol(X), orig_result, col=2)
+  
+  return(diff_result)
+}
 ```
-## [1] 0.842 0.884 0.885 0.923 1.016
+
+```{r echo=F, out.width="40%", fig.align="center"}
+f = function(X) X[,1] + X[,2] + X[,3] + X[,4] + X[,5]
+permutation_allcol(X, f)
 ```
 
-<img src="interpretability_bart_files/figure-html/unnamed-chunk-13-1.png" width="40%" style="display: block; margin: auto;" />
-
-```
-## [1] 128.64279   9.02780   3.55092  -0.00895   1.09847
+```{r echo=F, out.width="40%", fig.align="center"}
+f = function(X) 100*X[,1] + 10*X[,2] + 5*X[,3] + 2*X[,4] + X[,5] 
+permutation_allcol(X, f)
 ```
 
 ### Inclusion proportion
@@ -188,22 +438,55 @@ Another two ways to measure the importance of decision trees is to calculate the
 
 Comparing this method to coefficients in an ordinary linear regression (the first plot), we have the following plots. Apparently, it captures the relative importance but cannot quantify them very accurately. However, a question is then arose, are coefficients really feature importance? Coefficients are closely related to "effect size" since in linear models, it can be interpreted as "a unit increase in $X_1$ causes $\beta_1$ increases in $y$". There is no such thing in the decision tree. As a result, we need to decide a measure by ourselves in different contexts rather than simply following one universal measure.
 
+```{r echo=F}
+plot_feature_importance = function(X, f) {
+  y = f(X) + rnorm(nrow(X), 0, 0.1)
+  bm = bartMachine(X, y, verbose=F)
+  coef = summary(lm(y ~ X[, 1] + X[, 2] + X[, 3] + X[, 4] + X[, 5]))$coef[, 1][2:6]
+  names(coef) = colnames(X)
+  
+  par(mfrow=c(1, 3))
+  barplot(coef, ylab='true')
+  investigate_var_importance(bm, num_replicates_for_avg=20, type='splits',
+                             bottom_margin=5.1)
+  investigate_var_importance(bm, num_replicates_for_avg=20, type='trees',
+                             bottom_margin=5.1)
+  par(mfrow=c(1, 1))
+}
+```
 
+```{r echo=F, results='hide', out.width="80%", fig.asp=0.3, fig.align="center"}
+f = function(X) X[,1] + X[,2] + X[,3] + X[,4] + X[,5] 
+plot_feature_importance(X, f)
+```
 
-<img src="interpretability_bart_files/figure-html/unnamed-chunk-15-1.png" width="80%" style="display: block; margin: auto;" />
-
-<img src="interpretability_bart_files/figure-html/unnamed-chunk-16-1.png" width="80%" style="display: block; margin: auto;" />
+```{r echo=F, results='hide', out.width="80%", fig.asp=0.3, fig.align="center"}
+f = function(X) 100*X[,1] + 10*X[,2] + 5*X[,3] + 2*X[,4] + X[,5]
+plot_feature_importance(X, f)
+```
 
 ## Fit the fitted
 The last method, "fit the fitted" is the opposite of checking the residual. It aims to detect to what extent the information was captured in the model by fitting its prediction $\hat{y}$. In the real world, since we cannot be sure about the nature of the data, it is hard to specify a meaningful model to re-fit the fitted. However, by simulating the data, I will specify a model that is exactly the same as the model generating process to see how much information BART has in the predicted outcome.
 
 The first two results are from `model1` and `model2`, BART captures the coefficients in both models accurately.
 
+```{r echo=F}
+fit_fitted = function(X, f) {
+  y = f(X) + rnorm(nrow(X), 0, 0.1)
+  bm = bartMachine(X, y, verbose=F)
+  
+  y_hat = bm$y_hat_train
+  coef = summary(lm(y ~ X[, 1] + X[, 2] + X[, 3] + X[, 4] + X[, 5]))$coef[, 1][2:6]
+  names(coef) = colnames(X)
+  return(round(coef, 2))
+}
 
-```
-##            X1    X2   X3   X4   X5
-## model1   1.02  1.04 1.00 0.99 0.99
-## model2 100.04 10.03 4.98 2.00 1.01
+f = function(X) X[,1] + X[,2] + X[,3] + X[,4] + X[,5] 
+coef1 = fit_fitted(X, f)
+f = function(X) 100*X[,1] + 10*X[,2] + 5*X[,3] + 2*X[,4] + X[,5]
+coef2 = fit_fitted(X, f)
+
+rbind(model1 = coef1, model2 = coef2)
 ```
 
 The last two results are from linear models with interactions. Similarily, BART captures them very accurately.
@@ -211,11 +494,24 @@ The last two results are from linear models with interactions. Similarily, BART 
 $$Y = X_1 + X_2 + X_3 + X_4 + X_5 + 5X_1 X_2+ \epsilon, \quad \epsilon \sim \mathcal{N}(0, 0.1)$$
 $$Y = 100X_1 + 10X_2 + 5X_3 + 2X_4 + X_5 + 5X_1 X_2+ \epsilon, \quad \epsilon \sim \mathcal{N}(0, 0.1)$$
 
+```{r echo=F}
+fit_fitted_inter = function(X, f) {
+  y = f(X) + rnorm(nrow(X), 0, 0.1)
+  bm = bartMachine(X, y, verbose=F)
+  
+  y_hat = bm$y_hat_train
+  coef = summary(lm(y ~ X[, 1] * X[, 2] + X[, 3] + X[, 4] + X[, 5]))$coef[, 1][2:7]
+  names(coef) = c(colnames(X), 'X1X2')
+  return(round(coef, 2))
+}
 
-```
-##            X1   X2   X3   X4   X5 X1X2
-## model5   1.08 1.09 1.02 1.03 1.03 4.83
-## model6  99.99 9.96 5.01 2.03 1.02 5.03
+f = function(X) X[,1] + X[,2] + X[,3] + X[,4] + X[,5] + 5*X[,1]*X[,2]
+coef5 = fit_fitted_inter(X, f)
+
+f = function(X) 100*X[,1] + 10*X[,2] + 5*X[,3] + 2*X[,4] + X[,5] + 5*X[,1]*X[,2]
+coef6 = fit_fitted_inter(X, f)
+
+rbind(model5 = coef5, model6 = coef6)
 ```
 
 <!-- ## Sensitivity analysis -->
