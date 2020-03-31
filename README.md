@@ -3,6 +3,10 @@
 # Abstract
 Bayesian Additive Regression Trees (BART) is an ensemble Bayesian sum-of-trees model and has shown its promising applicability on either simulated data or real data sets. However, it suffers the same issue as most machine learning models -- interpretability -- many of the machine learning models are still a black-box without an intuitive explanation to the general public. While this is the case, BART has been applied to econometrics and causal inference for years. In these domains, explaining and understanding the effect is far more important than making predictions, interpretability is, therefore, an issue that awaits a resolution. In this project, I explore and present different methods and use a simulation approach to analyze how does the BART work and try to understand its interpretability. The result shows, though BART fits data with different underlying models reasonably well, it cannot provide effect size and feature importance in a consistent way in terms of quantitative measures. Further examination may be needed on this topic.
 
+
+
+Please see PDF for well-formatted version and Rmd for code.
+
 # Introduction
 
 ## Difference between econometrics and machine learning
